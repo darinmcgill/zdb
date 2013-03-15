@@ -6,7 +6,7 @@ import time
 
 _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 def _newId():
-    "".join([random.choice(_letters) for i in range(10)])
+    return "".join([random.choice(_letters) for i in range(10)])
     
 class Proxy(object):
     def __init__(self,conn,nodeId):
@@ -90,11 +90,11 @@ class Zoom(Proxy):
     def log(self,dictLike): self[time.time()] = self.dump(dictLike)
 
 if __name__ == "__main__":
-    p = Zoom("/tmp/test.zdb")
+    z = Zoom("test.zdb")
     if len(sys.argv) == 1:
-        p.refresh()
-        print p._cache
+        z.refresh()
+        print z.items()
     elif len(sys.argv) == 2:
-        print p[sys.argv[1]]
+        print z[sys.argv[1]]
     else:
-        p[sys.argv[1]] = sys.argv[2]
+        z[sys.argv[1]] = sys.argv[2]
