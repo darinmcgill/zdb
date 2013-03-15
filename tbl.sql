@@ -1,9 +1,9 @@
-create table tbl_zoom (
+create table if not exists tbl (
     recordId,         -- global row uuid
     nodeId,           -- uuid
     key,              -- null,text or integer
     valType INTEGER,  --
-    value,
+    valData,
     timeStamp REAL,   -- seconds since unix epoch
-    source            -- user/program id
+    src            -- user/program id
 );
