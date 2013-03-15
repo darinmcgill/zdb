@@ -1,3 +1,4 @@
+#!/usr/local/bin/python
 import sqlite3
 import sys
 import os
@@ -78,7 +79,7 @@ class Proxy(object):
     def commit(self):
         self._conn.commit()
 
-class Zoom(Proxy):
+class Zdb(Proxy):
     def __init__(self,fn):
         conn = sqlite3.connect(fn)
         conn.text_factory = str
@@ -90,11 +91,14 @@ class Zoom(Proxy):
     def log(self,dictLike): self[time.time()] = self.dump(dictLike)
 
 if __name__ == "__main__":
-    z = Zoom("test.zdb")
+    z = Zdb("test.zdb")
     if len(sys.argv) == 1:
         z.refresh()
         print z.items()
     elif len(sys.argv) == 2:
-        print z[sys.argv[1]]
+        try:
+            print z[sys.argv[1]]
+        except KeyError:
+            sys.exit(1)
     else:
         z[sys.argv[1]] = sys.argv[2]
