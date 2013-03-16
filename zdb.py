@@ -115,6 +115,5 @@ if __name__ == "__main__":
         links = [x for x in sys.argv[1].split("/") if x]
         last = links.pop()
         for link in links: v = v[link]
-        val = z.make() if sys.argv[2] == "/" else sys.argv[2]
+        val = v.make() if sys.argv[2] == "/" else sys.argv[2]
         v[last] = val
-    del z
