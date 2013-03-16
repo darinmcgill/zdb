@@ -15,6 +15,8 @@ class Proxy(object):
         self._nodeId = nodeId
         self._cache = dict()
         self._fresh = False
+    def __repr__(self):
+        return "<zdb.Proxy %s>" % self._nodeId
     def _fromPair(self,valType,valData):
         if valType is None:
             return valData
@@ -74,31 +76,45 @@ class Proxy(object):
         return self
     def __setitem__(self,key,value):
         self.update({key:value})
-    def __del__(self):
-        self._conn.commit()
     def commit(self):
         self._conn.commit()
+    def make(self,key=None,updateWith=None): 
+        out = Proxy(self._conn,_newId())
+        if updateWith: out.update(updateWith)
+        if key is not None: self[key] = out
+        return out
+    def log(self,dictLike): 
+        return self.make(key=time.time(),updateWith=dictLike)
+    def __str__(self):
+        self.refresh()
+        out = ""
+        for k,v in self.items():
+            out += "%10s => %r\n" % (repr(k),v)
+        return out
 
 class Zdb(Proxy):
-    def __init__(self,fn):
+    def __init__(self,fn="test.zdb"):
         conn = sqlite3.connect(fn)
         conn.text_factory = str
         with open("tbl.sql") as handle:
             conn.execute(handle.read())
         Proxy.__init__(self,conn,None)
-    def make(self): return Proxy(self._conn,_newId())
-    def dump(self,dictLike): return self.make().update(dictLike)
-    def log(self,dictLike): self[time.time()] = self.dump(dictLike)
+    def __del__(self):
+        self._conn.commit()
 
 if __name__ == "__main__":
-    z = Zdb("test.zdb")
+    v = z = Zdb()
     if len(sys.argv) == 1:
-        z.refresh()
-        print z.items()
+        print str(z)
     elif len(sys.argv) == 2:
-        try:
-            print z[sys.argv[1]]
-        except KeyError:
-            sys.exit(1)
+        for link in sys.argv[1].split("/"):
+            if not link: continue
+            v = v[link]
+        print str(v)
     else:
-        z[sys.argv[1]] = sys.argv[2]
+        links = [x for x in sys.argv[1].split("/") if x]
+        last = links.pop()
+        for link in links: v = v[link]
+        val = z.make() if sys.argv[2] == "/" else sys.argv[2]
+        v[last] = val
+    del z
