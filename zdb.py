@@ -2,13 +2,10 @@
 import sqlite3
 import sys
 import os
-import random
 import time
+import uuid
     
 class Proxy(object):
-
-    _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    _newId = lambda x: "".join([random.choice(x._letters) for i in range(10)])
 
     def __init__(self,conn,nodeId):
         self._conn = conn
@@ -78,7 +75,7 @@ class Proxy(object):
         tuples = list()
         for key,value in dictLike.items():
             valType,valData = self._toPair(value)
-            tmp = (self._newId(),self._nodeId,key,valType,valData,started)
+            tmp = (str(uuid.uuid4()),self._nodeId,key,valType,valData,started)
             tuples.append(tmp)
             self._cache[key] = value
         self._conn.executemany(query,tuples)
@@ -91,7 +88,7 @@ class Proxy(object):
         self._conn.commit()
 
     def make(self,key=None,updateWith=None): 
-        out = Proxy(self._conn,self._newId())
+        out = Proxy(self._conn,str(uuid.uuid4()))
         if updateWith: out.update(updateWith)
         if key is not None: self[key] = out
         return out
