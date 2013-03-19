@@ -4,6 +4,8 @@ import sys
 import os
 import time
 import uuid
+import json
+import pickle
     
 class Proxy(object):
 
@@ -17,21 +19,28 @@ class Proxy(object):
         return "<zdb.Proxy %s>" % self._nodeId
 
     def _fromPair(self,valType,valData):
-        if valType is None:
-            return valData
-        elif valType is 6:
-            return Proxy(self._conn,valData)
-        else:
-            raise Exception("not implemented")
+        if isinstance(valData,buffer): valData = str(valData)
+        if valType is None: return valData
+        elif valType is 6: return Proxy(self._conn,valData)
+        elif valType is 2: return json.loads(valData)
+        elif valType is 5: return pickle.loads(valData)
+        else: raise Exception("valType %s not implemented" % valType)
 
     def _toPair(self,thing):
-        if thing is None or isinstance(thing,(str,int,float)): 
-            return None,thing
         if isinstance(thing,Proxy):
             if thing._conn is not self._conn: 
                 raise Exception("external references not yet supported")
-            return 6,thing._nodeId
-        raise Exception("not expecting: %s,%s" % (type(thing),thing))
+            return (6,thing._nodeId)
+        if thing is None or isinstance(thing,(unicode,int,float)): 
+            return (None,thing)
+        if isinstance(thing,str):
+            return (None,buffer(thing))
+        if isinstance(thing,(dict,list,tuple)):
+            try: return (2,buffer(json.dumps(thing,separators=(',',':'))))
+            except: pass
+        try: return (5,buffer(pickle.dumps(thing,2)))
+        except: pass
+        raise ValueError("unable to serialize: %s,%s" % (type(thing),thing))
 
     def refresh(self):
         if self._nodeId is None:
@@ -88,17 +97,8 @@ class Proxy(object):
     def __setitem__(self,key,value):
         self.update({key:value})
 
-    def commit(self):
-        self._conn.commit()
-
-    def make(self,key=None,updateWith=None): 
-        out = Proxy(self._conn,str(uuid.uuid4()))
-        if updateWith: out.update(updateWith)
-        if key is not None: self[key] = out
-        return out
-
-    def log(self,**dictLike): 
-        return self.make(key=time.time(),updateWith=dictLike)
+    def log(self,**d): 
+        self[time.time()] = d
 
     def __str__(self):
         self.refresh()
@@ -107,19 +107,79 @@ class Proxy(object):
             out += "%10s => %r\n" % (repr(k),v)
         return out
 
-_columns = "recordId, nodeId, key, valType, valData, timeStamp, src"
+class Simple(object):
+    def __init__(self,conn,tbl):
+        self.conn = conn
+        self.tbl = tbl
+        self.conn.execute("create table if not exists %s (key,value);" % tbl)
+    def __setitem__(self,key,value):
+        self.conn.execute("delete from %s where key=?;" % self.tbl,(key,))
+        self.conn.execute("insert into %s values (?,?);" % self.tbl,(key,value))
+        self.conn.commit()
+    def __delitem__(self,key):
+        self.conn.execute("delete from %s where key=?;" % self.tbl,(key,))
+        self.conn.commit()
+    def __getitem__(self,key):
+        rows = self.conn.execute(
+            "select value from %s where key=?;" % self.tbl,
+            (key,)).fetchall()
+        if not rows: raise KeyError(key)
+        return rows[0][0]
+    def get(self,key,default=None):
+        try: return self[key]
+        except KeyError: return default
+    def keys(self):
+        rows = self.conn.execute("select key from %s;" % self.tbl).fetchall()
+        return [row[0] for row in rows]
+    def items(self):
+        return self.conn.execute(
+            "select key,value from %s;" % self.tbl).fetchall()
+    def __contains__(self,key):
+        return self.conn.execute(
+            "select count(*) as n from %s where key=?;" % self.tbl,
+            (key,)).fetchall()[0][0]
+    def setdefault(self,key,default):
+        try: return self[key]
+        except KeyError:
+            self[key] = default
+            return default
+    def update(self,d):
+        for k,v in d.items():
+            self[k] = v
 
-class Zdb(Proxy):
-    def __init__(self,fn="test.zdb"):
-        conn = sqlite3.connect(fn)
-        conn.text_factory = str
-        conn.execute("create table if not exists tbl (%s);" % _columns)
-        Proxy.__init__(self,conn,None)
-    def __del__(self):
-        self._conn.commit()
+class Zeta(object):
+    def __init__(self,fn):
+        self.fn = fn
+        _columns = "recordId, nodeId, key, valType, valData, timeStamp, src"
+        self.conn = sqlite3.connect(fn)
+        self.conn.execute("create table if not exists tbl (%s);" % _columns)
+    def getRoot(self): return Proxy(self.conn,None)
+    def makeNode(self): return Proxy(self.conn,str(uuid.uuid4()))
+    def getMeta(self): return Simple(self.conn,"meta")
+    def __del__(self): self.close()
+    def close(self): 
+        if self.conn:
+            self.conn.commit()
+            self.conn.close()
+            self.conn = None
 
 def doTest(*args):
-    print "running tests!"
+    fn = "/tmp/test.zdb"
+    if os.path.exists(fn): os.unlink(fn)
+    zeta = Zeta(fn)
+    meta = zeta.getMeta()
+    meta["foo"] = "bar"
+    meta[9223372036854775807] = "cheese"
+    assert set(meta.keys()) == set(['foo',9223372036854775807]),meta.keys()
+    assert meta[9223372036854775807] == "cheese"
+    root = zeta.getRoot()
+    root["abc"] = [1,2,"three"]
+    zeta.close()
+    zeta2 = Zeta(fn)
+    assert zeta2.getRoot()["abc"] == [1,2,"three"]
+    zeta2.close()
+    #os.unlink(fn)
+    print "ok!"
 
 def doGet(fn,key=None):
     v = z = Zdb(fn)
