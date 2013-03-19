@@ -187,7 +187,8 @@ def doTest(*args):
     print "ok!"
 
 def doGet(fn,key=None):
-    v = z = Zdb(fn)
+    z = File(fn)
+    v = z.getRoot()
     if key is not None:
         for link in key.split("/"):
             if not link: continue
@@ -195,21 +196,26 @@ def doGet(fn,key=None):
     print str(v)
 
 def doSet(fn,key,value=None):
-    v = z = Zdb(fn)
+    f = File(fn)
+    v = f.getRoot()
     links = [x for x in key.split("/") if x]
     last = links.pop()
     for link in links: v = v[link]
-    value = v.make() if value is None else value
+    value = f.makeNode() if value is None else value
     v[last] = value
     
 
-def doSelect(fn,columns):
-    z = Zdb(fn)
-    assert isinstance(columns,str),columns
-    colList = columns.split(",")
-    for thing in z.values():
+def doSelect(fn,columns=None):
+    z = File(fn)
+    root = z.getRoot()
+    colList = columns.split(",") if columns else None
+    for thing in root.values():
         #print thing
-        print ",".join([str(thing.get(c)) for c in colList])
+        if colList:
+            try: print ",".join([str(thing.get(c)) for c in colList])
+            except AttributeError: pass
+        else:
+            print thing
     
 
 if __name__ == "__main__":
