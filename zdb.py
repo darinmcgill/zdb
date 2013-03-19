@@ -7,7 +7,7 @@ import uuid
 import json
 import pickle
     
-class Proxy(object):
+class Node(object):
 
     def __init__(self,conn,nodeId):
         self._conn = conn
@@ -16,18 +16,18 @@ class Proxy(object):
         self._fresh = False
 
     def __repr__(self):
-        return "<zdb.Proxy %s>" % self._nodeId
+        return "<zdb.Node %s>" % self._nodeId
 
     def _fromPair(self,valType,valData):
         if isinstance(valData,buffer): valData = str(valData)
         if valType is None: return valData
-        elif valType is 6: return Proxy(self._conn,valData)
+        elif valType is 6: return Node(self._conn,valData)
         elif valType is 2: return json.loads(valData)
         elif valType is 5: return pickle.loads(valData)
         else: raise Exception("valType %s not implemented" % valType)
 
     def _toPair(self,thing):
-        if isinstance(thing,Proxy):
+        if isinstance(thing,Node):
             if thing._conn is not self._conn: 
                 raise Exception("external references not yet supported")
             return (6,thing._nodeId)
@@ -46,14 +46,14 @@ class Proxy(object):
         if self._nodeId is None:
             query = """
                 select key,valType,valData
-                from tbl 
+                from nodes 
                 where nodeId is NULL
                 order by timeStamp; """
             cur = self._conn.execute(query)
         else:
             query = """
                 select key,valType,valData
-                from tbl 
+                from nodes 
                 where nodeId=? 
                 order by timeStamp; """
             cur = self._conn.execute(query,(self._nodeId,))
@@ -83,7 +83,7 @@ class Proxy(object):
     def update(self,dictLike):
         started = time.time()
         query = """
-            insert into tbl (recordId,nodeId,key,valType,valData,timeStamp)
+            insert into nodes (recordId,nodeId,key,valType,valData,timeStamp)
             values (?,?,?,?,?,?); """ 
         tuples = list()
         for key,value in dictLike.items():
@@ -102,7 +102,7 @@ class Proxy(object):
 
     def __str__(self):
         self.refresh()
-        out = ""
+        out = "\n"
         for k,v in self.items():
             out += "%10s => %r\n" % (repr(k),v)
         return out
@@ -131,6 +131,9 @@ class Simple(object):
     def keys(self):
         rows = self.conn.execute("select key from %s;" % self.tbl).fetchall()
         return [row[0] for row in rows]
+    def values(self):
+        rows = self.conn.execute("select value from %s;" % self.tbl).fetchall()
+        return [row[0] for row in rows]
     def items(self):
         return self.conn.execute(
             "select key,value from %s;" % self.tbl).fetchall()
@@ -147,16 +150,18 @@ class Simple(object):
         for k,v in d.items():
             self[k] = v
 
-class Zeta(object):
+class File(object):
     def __init__(self,fn):
         self.fn = fn
         _columns = "recordId, nodeId, key, valType, valData, timeStamp, src"
         self.conn = sqlite3.connect(fn)
-        self.conn.execute("create table if not exists tbl (%s);" % _columns)
-    def getRoot(self): return Proxy(self.conn,None)
-    def makeNode(self): return Proxy(self.conn,str(uuid.uuid4()))
-    def getMeta(self): return Simple(self.conn,"meta")
+        self.conn.execute("create table if not exists nodes (%s);" % _columns)
+    def __repr__(self): return "<zdb.File %s>" % self.fn
+    def getRoot(self): return Node(self.conn,None)
+    def makeNode(self): return Node(self.conn,str(uuid.uuid4()))
+    def getSimple(self,tbl="simple"): return Simple(self.conn,tbl)
     def __del__(self): self.close()
+    def commit(self): self.conn.commit()
     def close(self): 
         if self.conn:
             self.conn.commit()
@@ -166,8 +171,8 @@ class Zeta(object):
 def doTest(*args):
     fn = "/tmp/test.zdb"
     if os.path.exists(fn): os.unlink(fn)
-    zeta = Zeta(fn)
-    meta = zeta.getMeta()
+    zeta = File(fn)
+    meta = zeta.getSimple("meta")
     meta["foo"] = "bar"
     meta[9223372036854775807] = "cheese"
     assert set(meta.keys()) == set(['foo',9223372036854775807]),meta.keys()
@@ -175,7 +180,7 @@ def doTest(*args):
     root = zeta.getRoot()
     root["abc"] = [1,2,"three"]
     zeta.close()
-    zeta2 = Zeta(fn)
+    zeta2 = File(fn)
     assert zeta2.getRoot()["abc"] == [1,2,"three"]
     zeta2.close()
     #os.unlink(fn)
