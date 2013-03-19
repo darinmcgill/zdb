@@ -16,7 +16,10 @@ tmpConn = sqlite3.connect(tmp)
 with open("tbl.sql") as handle: 
     tmpConn.execute(handle.read())
 
-rows = srcConn.execute("select * from tbl where timeStamp > %s" % ts).fetchall()
+cur = srcConn.execute("select * from tbl where timeStamp > %s" % ts)
+columns = ",".join([x[0] for x in cur.description])
+tmpConn.execute("create table tbl (%s)" % columns)
+rows = cur.fetchall()
 qs = ",".join(["?" for x in rows[0]])
 tmpConn.executemany("insert into tbl values (%s)" % qs,rows)
 tmpConn.commit()

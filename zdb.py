@@ -67,6 +67,10 @@ class Proxy(object):
         if not self._fresh: self.refresh()
         return self._cache[key]
 
+    def get(self,key,default=None):
+        if not self._fresh: self.refresh()
+        return self._cache.get(key,default)
+
     def update(self,dictLike):
         started = time.time()
         query = """
@@ -93,7 +97,7 @@ class Proxy(object):
         if key is not None: self[key] = out
         return out
 
-    def log(self,dictLike): 
+    def log(self,**dictLike): 
         return self.make(key=time.time(),updateWith=dictLike)
 
     def __str__(self):
@@ -103,43 +107,54 @@ class Proxy(object):
             out += "%10s => %r\n" % (repr(k),v)
         return out
 
+_columns = "recordId, nodeId, key, valType, valData, timeStamp, src"
+
 class Zdb(Proxy):
     def __init__(self,fn="test.zdb"):
         conn = sqlite3.connect(fn)
         conn.text_factory = str
-        with open("tbl.sql") as handle:
-            conn.execute(handle.read())
+        conn.execute("create table if not exists tbl (%s);" % _columns)
         Proxy.__init__(self,conn,None)
     def __del__(self):
         self._conn.commit()
 
-def runTests():
+def doTest(*args):
     print "running tests!"
 
+def doGet(fn,key=None):
+    v = z = Zdb(fn)
+    if key is not None:
+        for link in key.split("/"):
+            if not link: continue
+            v = v[link]
+    print str(v)
+
+def doSet(fn,key,value=None):
+    v = z = Zdb(fn)
+    links = [x for x in key.split("/") if x]
+    last = links.pop()
+    for link in links: v = v[link]
+    value = v.make() if value is None else value
+    v[last] = value
+    
+
+def doSelect(fn,columns):
+    z = Zdb(fn)
+    assert isinstance(columns,str),columns
+    colList = columns.split(",")
+    for thing in z.values():
+        #print thing
+        print ",".join([str(thing.get(c)) for c in colList])
+    
+
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        runTests()
-    elif len(sys.argv) == 2:
-        print str(Zdb(sys.argv[1]))
-    elif len(sys.argv) == 3:
-        try:
-            v = z = Zdb(sys.argv[1])
-            key = sys.argv[2]
-            for link in key.split("/"):
-                if not link: continue
-                v = v[link]
-            print str(v)
-        except KeyError:
-            sys.exit(1)
-    else:
-        try:
-            v = z = Zdb(sys.argv[1])
-            key = sys.argv[2]
-            value = sys.argv[3]
-            links = [x for x in key.split("/") if x]
-            last = links.pop()
-            for link in links: v = v[link]
-            value = v.make() if value == "/" else value
-            v[last] = value
-        except KeyError:
-            sys.exit(1)
+    try:
+        if len(sys.argv) == 1:
+            print "usage..."
+            sys.exit(0)
+        elif sys.argv[1] == "test":    doTest(*sys.argv[2:])
+        elif sys.argv[1] == "get":     doGet(*sys.argv[2:])
+        elif sys.argv[1] == "set":     doSet(*sys.argv[2:])
+        elif sys.argv[1] == "select":  doSelect(*sys.argv[2:])
+    except KeyError:
+        sys.exit(1)
