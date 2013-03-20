@@ -107,49 +107,6 @@ class Node(object):
             out += "%10s => %r\n" % (repr(k),v)
         return out
 
-class Simple(object):
-    def __init__(self,conn,tbl):
-        self.conn = conn
-        self.tbl = tbl
-        self.conn.execute("create table if not exists %s (key,value);" % tbl)
-    def __setitem__(self,key,value):
-        self.conn.execute("delete from %s where key=?;" % self.tbl,(key,))
-        self.conn.execute("insert into %s values (?,?);" % self.tbl,(key,value))
-        self.conn.commit()
-    def __delitem__(self,key):
-        self.conn.execute("delete from %s where key=?;" % self.tbl,(key,))
-        self.conn.commit()
-    def __getitem__(self,key):
-        rows = self.conn.execute(
-            "select value from %s where key=?;" % self.tbl,
-            (key,)).fetchall()
-        if not rows: raise KeyError(key)
-        return rows[0][0]
-    def get(self,key,default=None):
-        try: return self[key]
-        except KeyError: return default
-    def keys(self):
-        rows = self.conn.execute("select key from %s;" % self.tbl).fetchall()
-        return [row[0] for row in rows]
-    def values(self):
-        rows = self.conn.execute("select value from %s;" % self.tbl).fetchall()
-        return [row[0] for row in rows]
-    def items(self):
-        return self.conn.execute(
-            "select key,value from %s;" % self.tbl).fetchall()
-    def __contains__(self,key):
-        return self.conn.execute(
-            "select count(*) as n from %s where key=?;" % self.tbl,
-            (key,)).fetchall()[0][0]
-    def setdefault(self,key,default):
-        try: return self[key]
-        except KeyError:
-            self[key] = default
-            return default
-    def update(self,d):
-        for k,v in d.items():
-            self[k] = v
-
 class File(object):
     def __init__(self,fn):
         self.fn = fn
@@ -204,18 +161,6 @@ def doSet(fn,key,value=None):
     value = f.makeNode() if value is None else value
     v[last] = value
     
-
-def doSelect(fn,columns=None):
-    z = File(fn)
-    root = z.getRoot()
-    colList = columns.split(",") if columns else None
-    for thing in root.values():
-        #print thing
-        if colList:
-            try: print ",".join([str(thing.get(c)) for c in colList])
-            except AttributeError: pass
-        else:
-            print thing
     
 
 if __name__ == "__main__":
