@@ -3,6 +3,8 @@ import sqlite3
 import sys
 import os
 import time
+import datetime
+import random
 
 class Zogger(object):
 
@@ -13,7 +15,10 @@ class Zogger(object):
         self.conn = thing
         #self.conn.text_factory = str
         self.cur = self.conn.cursor()
-        self.cur.execute("create table if not exists zog (_ts);")
+        self.cur.execute("""
+            create table if not exists zog 
+            (_id integer primary key asc);""")
+        self._next = random.randint(0,999)
         self.refresh()
 
     def refresh(self):
@@ -21,7 +26,8 @@ class Zogger(object):
         self.cols = set([x[0] for x in self.cur.description])
 
     def zog(self,*a,**b):
-        b["_ts"] = time.time()
+        b["_id"] = 1000*int(1000*1000*time.time()) + self._next
+        self._next = (1 + self._next) % 1000
         for i,v in enumerate(a):
             b["_%d" % i] = v
         keys = b.keys()
@@ -49,30 +55,42 @@ class Zogger(object):
     def __del__(self):
         self.close()
 
-    def getEntries(self,text_factory=None):
+    def id2datetime(self,anId):
+        ts = anId/1e9
+        return datetime.datetime.fromtimestamp(ts)
+
+    def values(self,text_factory=None):
+        return [x[1] for x in self.items()]
+
+    def items(self,text_factory=None):
         if text_factory:
             self.conn.text_factory = text_factory
-        self.cur.execute("select * from zog;")
+        self.cur.execute("select * from zog order by _id;")
         raw = self.cur.fetchall()
         cols = [x[0] for x in self.cur.description]
         out = list()
         for row in raw:
             dRow = dict()
             for i in range(len(cols)):
-                if cols[i] == "_ts": continue
+                if cols[i] == "_id": 
+                    _id = row[i]
+                    continue
                 if row[i] is not None:
                     dRow[cols[i]] = row[i]
-            out.append(dRow)
+            out.append((_id,dRow))
         return out
         
 if __name__ == "__main__":
     fn = "/tmp/test.zog"
     if os.path.exists(fn): os.unlink(fn)
     zogger = Zogger(fn)
+    zogger.zog()
+    zogger.zog()
+    zogger.zog()
     zogger.zog(hello="world",foo="bar")
     zogger.zog(cheese="fries",hello="universe")
     zogger.zog("martin",hello="again")
     zogger.close()
     zogger = Zogger(fn)
-    for thing in zogger.getEntries(str):
-        print thing
+    for thing in zogger.items(str):
+        print zogger.id2datetime(thing[0]),thing[1]
