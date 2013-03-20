@@ -55,14 +55,7 @@ class Zogger(object):
     def __del__(self):
         self.close()
 
-    def id2datetime(self,anId):
-        ts = anId/1e9
-        return datetime.datetime.fromtimestamp(ts)
-
-    def values(self,text_factory=None):
-        return [x[1] for x in self.items()]
-
-    def items(self,text_factory=None):
+    def getEntries(self,text_factory=None):
         if text_factory:
             self.conn.text_factory = text_factory
         self.cur.execute("select * from zog order by _id;")
@@ -73,11 +66,11 @@ class Zogger(object):
             dRow = dict()
             for i in range(len(cols)):
                 if cols[i] == "_id": 
-                    _id = row[i]
+                    ts = datetime.datetime.fromtimestamp(row[i]/1e9)
                     continue
                 if row[i] is not None:
                     dRow[cols[i]] = row[i]
-            out.append((_id,dRow))
+            out.append((ts,dRow))
         return out
         
 if __name__ == "__main__":
@@ -92,5 +85,5 @@ if __name__ == "__main__":
     zogger.zog("martin",hello="again")
     zogger.close()
     zogger = Zogger(fn)
-    for thing in zogger.items(str):
-        print zogger.id2datetime(thing[0]),thing[1]
+    for entry in zogger.getEntries(str):
+        print entry[0],entry[1]
