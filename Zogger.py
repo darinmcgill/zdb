@@ -8,21 +8,22 @@ import random
 
 class Zogger(object):
 
-    def __init__(self,thing):
+    def __init__(self,thing,tbl="zog"):
         if isinstance(thing,(str,unicode)): 
             thing = sqlite3.connect(thing)
         assert isinstance(thing,sqlite3.Connection),(type(thing),thing)
         self.conn = thing
+        self.tbl = tbl
         #self.conn.text_factory = str
         self.cur = self.conn.cursor()
         self.cur.execute("""
-            create table if not exists zog 
-            (_id integer primary key asc);""")
+            create table if not exists %s 
+            (_id integer primary key asc);""" % self.tbl)
         self._next = random.randint(0,999)
         self.refresh()
 
     def refresh(self):
-        self.cur.execute("select * from zog limit 1;")
+        self.cur.execute("select * from %s limit 1;" % self.tbl)
         self.cols = set([x[0] for x in self.cur.description])
 
     def zog(self,*a,**b):
@@ -32,13 +33,14 @@ class Zogger(object):
             b["_%d" % i] = v
         keys = b.keys()
         for key in b.keys():
-            if key not in self.cols: 
-                self.cur.execute("alter table zog add column %s;" % key)
-                self.refresh()
+            if key in self.cols: continue
+            self.cur.execute("alter table %s add column %s;" % (self.tbl,key))
+        self.refresh()
         ns = ",".join(keys)
         qs = ",".join(["?" for x in keys])
         vs = [b[key] for key in keys]
-        self.cur.execute("insert into zog (%s) values (%s);" % (ns,qs),vs)
+        self.cur.execute("insert into %s (%s) values (%s);" % (
+            self.tbl,ns,qs),vs)
 
     def commit(self):
         self.conn.commit()
@@ -58,7 +60,7 @@ class Zogger(object):
     def getEntries(self,text_factory=None):
         if text_factory:
             self.conn.text_factory = text_factory
-        self.cur.execute("select * from zog order by _id;")
+        self.cur.execute("select * from %s order by _id;" % self.tbl)
         raw = self.cur.fetchall()
         cols = [x[0] for x in self.cur.description]
         out = list()
